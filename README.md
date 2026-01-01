@@ -1,59 +1,49 @@
-<img src="https://github.com/bdring/FluidNC/wiki/images/logos/FluidNC.svg" width="600">
+# FluidNC Embroidery Mod
 
-## Introduction
+This is a modified version of [FluidNC](https://github.com/bdring/FluidNC) designed specifically for controlling embroidery machines. It introduces a synchronization mechanism that coordinates X/Y pantograph movements with the needle's position using a sensor.
 
-**FluidNC** is a CNC firmware optimized for the ESP32 controller. It is the next generation of firmware from the creators of Grbl_ESP32. It includes a web based UI and the flexibility to operate a wide variety of machine types. This includes the ability to control machines with multiple tool types such as laser plus spindle or a tool changer.  
+## Key Features
 
-## Note about this Async fork/branch
+-   **Needle Synchronization**: The firmware waits for a signal from a needle position sensor (e.g., an optical interrupter or Hall effect sensor) before executing the next stitch movement. This ensures the needle is out of the fabric before the frame moves.
+-   **Stitch Buffering**: Stitches are queued in a dedicated buffer (FreeRTOS queue) to ensure smooth operation without stalling the G-code parser.
+-   **Burst Movement**: Stitch movements are executed as rapid "bursts" of steps to maximize speed between needle penetrations.
+-   **Embroidery Mode**: A dedicated mode that handles the specific requirements of embroidery G-code execution.
 
-This is an implementation of the WebUI using AsyncWebServer and AsyncWebSocket from https://github.com/ESP32Async/ESPAsyncWebServer.git
-It is still a very early work and not much has been tested so far in real world usage, so use it or try it at your own risks.
-It was tested with both webui3 and webui2 and so far all basic functionality seems to work, as well as settings, configurations and OTA update.
+## Configuration
 
-The goal behind implementing async was to fix the issue where if any TCP client die without sending a gracefull disconnection during a job operation (think about a computer going into standby, a network cable unplugged from a switch / computer, etc.), and if using auto reports (which uses websockets), this will hang the job for some time. Based on preliminary testings, this new async mplementation does seem more rebust to these types of disconnections.
+To use the embroidery features, you need to define the `needle_sensor_pin` in your machine configuration YAML file.
 
-Github reference issue: https://github.com/bdring/FluidNC/issues/1360
+Example `config.yaml` snippet:
 
-## Firmware Architecture
+```yaml
+embroidery:
+  needle_sensor_pin: gpio.34:low  # Example pin, adjust to your wiring
+```
 
-- Object-Oriented hierarchical design
-- Hardware abstraction for machine features like spindles, motors, and stepper drivers
-- Extensible - Adding new features is much easier for the firmware as well as gcode senders.
+-   **needle_sensor_pin**: The GPIO pin connected to your needle position sensor. The firmware triggers the move on the **FALLING** edge of this signal (by default).
 
-## Machine Definition Method
+## How It Works
 
-There is no need to compile the firmware. You use an installation script to upload the latest release of the firmware and then create [config file](http://wiki.fluidnc.com/en/config/overview) text file that describes your machine.  That file is uploaded to the FLASH on the ESP32 using the USB/Serial port or WIFI.
+1.  **G-Code Parsing**: The firmware parses G-code commands (standard G0/G1 moves).
+2.  **Queueing**: Instead of executing moves immediately or adding them to the standard motion planner, embroidery stitches are sent to a special `StitchQueue`.
+3.  **Waiting**: A background task waits for the needle sensor interrupt.
+4.  **Trigger**: When the needle sensor triggers (indicating the needle is up), the task pulls the next stitch from the queue.
+5.  **Execution**: The X and Y motors are stepped rapidly ("Burst Move") to the new position before the needle comes down again.
 
-You can have multiple config files stored on the ESP32. The default is config.yaml, but you can change that with [**$Config/Filename=<myOtherConfig.yaml>**](http://wiki.fluidnc.com/en/features/commands_and_settings#config_filename)
+## Usage
 
-## Basic Grbl Compatibility
+1.  **Hardware**: Connect your needle position sensor to the configured ESP32 pin.
+2.  **Firmware**: Flash this modified firmware to your ESP32.
+3.  **Config**: Upload your config file with the `needle_sensor_pin` defined.
+4.  **G-Code**: Send your embroidery G-code design. The machine will move the frame only when the needle sensor is triggered.
 
-The intent is to maintain as much Grbl compatibility as possible. It is 100% compatible with the day to day operations of running gcode with a sender, so there is no change to the Grbl gcode send/response protocol, and all Grbl gcode are supported. Most of the $ settings have been replaced with easily readable items in the config file.
+## Disclaimer
 
+This is experimental firmware.
+-   **Use at your own risk.**
+-   Ensure your machine is mechanically capable of the rapid movements required.
+-   Always test with the needle thread removed first to verify synchronization.
 
-## WebUI
+## Original FluidNC
 
-FluidNC includes a built-in browser-based Web UI (Esp32_WebUI) so you control the machine from a PC, phone, or tablet on the same Wifi network.
-
-## Wiki
-
-[Check out the wiki](http://wiki.fluidnc.com) if you want the learn more about the feature or how to use it.
-
-## Credits
-
-The original [Grbl](https://github.com/gnea/grbl) is an awesome project by Sungeon (Sonny) Jeon. I have known him for many years and he is always very helpful. I have used Grbl on many projects.
-
-The Wifi and WebUI is based on [this project.](https://github.com/luc-github/ESP3D-WEBUI)  
-
-## Discussion
-
-<img src="http://wiki.fluidnc.com/discord-logo_trans.png" width="180">
-
-We have a Discord server for the development this project. Ask for an invite
-
-
-## Donations
-
-This project requires a lot of work and often expensive items for testing. Please consider a safe, secure and highly appreciated donation via the PayPal link below or via the GitHub sponsor link at the top of the page.
-
-[![](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/donate/?hosted_button_id=8DYLB6ZYYDG7Y)
+For general FluidNC documentation, please refer to the [official Wiki](http://wiki.fluidnc.com).
